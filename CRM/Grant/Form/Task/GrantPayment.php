@@ -264,6 +264,21 @@ class CRM_Grant_Form_Task_GrantPayment extends CRM_Core_Form
         $dao->id = $this->_prid;
         $dao->payment_status_id = CRM_Core_OptionGroup::getValue('grant_payment_status', 'Stopped', 'name');
         $dao->save();
+
+        require_once 'CRM/Grant/Words.php';
+        $words = new CRM_Grant_Words();
+        $amountInWords = ucwords($words->convert_number_to_words($grantInfo['amount']));
+        $grantPayment[$grantKey]['total_in_words'] = $grantInfo['total_in_words'] =
+        	$grantValues['total_in_words'] = $amountInWords;
+        $grantPayment[$grantKey]['amount'] = $grantInfo['amount'];
+        // Save payment
+        $savePayment = $grantPayment[$grantKey];
+        $savePayment['payable_to_address'] = str_replace('<br /> ', '', $savePayment['payable_to_address']);
+        $result = CRM_Grant_BAO_GrantPayment::add($savePayment, $ids = array());
+        
+        $grantPayment[$grantKey]['payment_id'] = $result->payment_number;
+        $contactPayments[$grantKey] = $result->id;
+        unset($grantPayment[$grantKey]['payment_status_id']);
       }
       require_once 'CRM/Grant/Words.php';
       $words = new CRM_Grant_Words();
