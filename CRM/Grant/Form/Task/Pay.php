@@ -65,11 +65,11 @@ class CRM_Grant_Form_Task_Pay extends CRM_Grant_Form_Task
         if ( !CRM_Core_Permission::checkActionPermission( 'CiviGrant', CRM_Core_Action::PAY ) ) {
             CRM_Core_Error::fatal( ts( 'You do not have permission to access this page' ) );  
         }
-        $grantStatus = CRM_Core_OptionGroup::values('grant_status', TRUE, FALSE, FALSE, NULL, 'name');
-
+        $grantStatus = CRM_Core_OptionGroup::values( 'grant_status', TRUE );
+        
         $paidGrants = $approvedGrants = array();
-        CRM_Core_PseudoConstant::populate($paidGrants, 'CRM_Grant_DAO_Grant', true, 'status_id', false, " id in (".implode ( ', ' , $this->_grantIds ).") AND status_id = {$grantStatus['Paid']}" );
-        CRM_Core_PseudoConstant::populate($approvedGrants, 'CRM_Grant_DAO_Grant', true, 'status_id', false, " id in (".implode ( ', ' , $this->_grantIds ).") AND status_id = {$grantStatus['Approved for Payment']}" );
+        CRM_Core_PseudoConstant::populate( $paidGrants, 'CRM_Grant_DAO_Grant', true, 'status_id', false, " id in (".implode ( ', ' , $this->_grantIds ).") AND status_id = {$grantStatus['Paid']}" );
+        CRM_Core_PseudoConstant::populate( $approvedGrants, 'CRM_Grant_DAO_Grant', true, 'status_id', false, " id in (".implode ( ', ' , $this->_grantIds ).") AND status_id = {$grantStatus['Approved for Payment']}" );
         
         $this->_paidGrants = $paidGrants;
         $this->_notApproved = count($this->_grantIds) - count( $this->_paidGrants ) - count( $approvedGrants );

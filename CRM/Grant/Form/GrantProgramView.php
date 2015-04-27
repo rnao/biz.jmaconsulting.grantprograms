@@ -58,11 +58,11 @@ class CRM_Grant_Form_GrantProgramView extends CRM_Core_Form {
     $this->assign('contributionType', $contributionTypes[$values['financial_type_id']] );
     $this->assign('grantProgramAlgorithm', CRM_Grant_BAO_GrantProgram::getOptionName( $values['allocation_algorithm']));
     $this->assign('grant_program_id', empty($grantPrograms[$values['grant_program_id']]) ? NULL : $grantPrograms[$values['grant_program_id']]);
-    $grantTokens = array('label','name','total_amount',
+    $grantTokens = array('label','name','total_amount','from_email_address',
       'remainder_amount', 'allocation_date', 'is_active', 'is_auto_email');
 
     foreach ($grantTokens as $token) {
-      $this->assign($token, CRM_Utils_Array::value($token, $values));
+      $this->assign($token, htmlspecialchars(CRM_Utils_Array::value($token, $values)));
     }
     $this->assign('id', $this->_id);
   }
@@ -145,7 +145,9 @@ class CRM_Grant_Form_GrantProgramView extends CRM_Core_Form {
           $ids['grant_id'] = $value['grant_id'];
         }
         else {
-          $requestedAmount = CRM_Utils_Money::format((($value['assessment']/100) * $value['amount_total'] * ($grantThresholds['Funding factor'] / 100)), NULL, NULL, TRUE);
+          $requestedAmount = CRM_Utils_Money::format(($value['amount_total'] *
+              (($value['assessment']/100 < 0) ? 0 : ($value['assessment']/100)) *
+              ($grantThresholds['Funding factor'] / 100)), NULL, NULL, TRUE);
        		// Don't grant more money than originally requested
           if ($requestedAmount > $value['amount_total']) {
           	$requestedAmount = $value['amount_total'];
@@ -207,15 +209,15 @@ class CRM_Grant_Form_GrantProgramView extends CRM_Core_Form {
     $grantPrograms = CRM_Grant_BAO_GrantProgram::getGrantPrograms();
     $eligibleCountMessage = $remainingAmount = NULL;
      if ($nonEligibleCount) {
-       $nonEligibleCountMessage = ts($nonEligibleCount." eligible applications were not allocated since they have already received their annual maximum.");
+      $nonEligibleCountMessage = $nonEligibleCount." eligible applications were not allocated since they have already received their annual maximum.";
     }
     if ($eligibleCount) {
-      $eligibleCountMessage = ts($eligibleCount." eligible applications were not allocated ".CRM_Utils_Money::format($eligibleAmount,NULL, NULL,FALSE)." in funds they would have received were funds available.");
+      $eligibleCountMessage = $eligibleCount." eligible applications were not allocated ".CRM_Utils_Money::format($eligibleAmount,NULL, NULL,FALSE)." in funds they would have received were funds available. ";
     }
     if ($totalAmount > 0) {
       $remainingAmount = CRM_Utils_Money::format($totalAmount,NULL, NULL,FALSE)." remains unallocated.";
     }
-    $message = ts("Trial Allocation Completed. " . CRM_Utils_Money::format($grantedAmount,NULL, NULL,FALSE) . " allocated to {$grantedCount} eligible applications. " . $eligibleCountMessage . $nonEligibleCountMessage . $remainingAmount);
+    $message = "Trial Allocation Completed. ".CRM_Utils_Money::format($grantedAmount,NULL, NULL,FALSE)." allocated to {$grantedCount} eligible applications. ".$eligibleCountMessage.$nonEligibleCountMessage.$remainingAmount;
    
     $page->assign('message', $message);
       
@@ -305,7 +307,7 @@ class CRM_Grant_Form_GrantProgramView extends CRM_Core_Form {
           $result = CRM_Grant_BAO_Grant::add($row, $ids);
         } 
       }
-      CRM_Core_Session::setStatus(ts('Approved allocations finalized successfully.'), '', 'no-popup');
+      CRM_Core_Session::setStatus('Approved allocations finalized successfully.', '', 'no-popup');
     }
   }
     
@@ -339,7 +341,7 @@ class CRM_Grant_Form_GrantProgramView extends CRM_Core_Form {
       $grantProgramParams['id'] = $_POST['pid'];
       $ids['grant_program'] = $_POST['pid'];
       CRM_Grant_BAO_GrantProgram::create($grantProgramParams, $ids);
-      CRM_Core_Session::setStatus(ts('Marked remaining unapproved Grants as Ineligible successfully.'), '', 'no-popup');
+      CRM_Core_Session::setStatus('Marked remaining unapproved Grants as Ineligible successfully.', '', 'no-popup');
     }
   }
 }

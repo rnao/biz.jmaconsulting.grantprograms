@@ -309,14 +309,12 @@ WHERE civicrm_contact.id = $id ";
     if (CRM_Utils_Array::value('is_auto_email', $values)) {
       list($displayName, $email) = CRM_Contact_BAO_Contact_Location::getEmailDetails($contactID);
       if (isset($email)) {
-        $grantStatuses = CRM_Core_OptionGroup::values('grant_status', FALSE, FALSE, FALSE, NULL, 'name');
-        $grantStatuses = $grantStatuses[$values['status_id']];
-        $valueName = strtolower($grantStatuses);
-        if ($grantStatuses == 'Awaiting Information') {
-          $explode = explode(' ', $grantStatuses);
+        $valueName = strtolower($grantStatus);
+        if ($grantStatus == 'Awaiting Information') {
+          $explode = explode(' ', $grantStatus);
           $valueName = strtolower($explode[0]) . '_info';
         } 
-        elseif (strstr($grantStatuses, 'Approved')) {
+        elseif (strstr($grantStatus, 'Approved')) {
           $valueName = strtolower('Approved');
         }
         $sendTemplateParams = array(
@@ -328,28 +326,42 @@ WHERE civicrm_contact.id = $id ";
            ),
           'PDFFilename' => '',
         );
-        
-        $defaultAddress = CRM_Core_OptionGroup::values('from_email_address', NULL, NULL, NULL, ' AND is_default = 1');
-        foreach ($defaultAddress as $id => $value) {
-          $sendTemplateParams['from'] = $value;
+
+        $emailQuery = "SELECT from_email_address FROM civicrm_grant_program WHERE id = %1";
+        $defaultAddress = CRM_Core_DAO::singleValueQuery($emailQuery, array(
+          1 => array($values['grant_program_id'], 'Integer')
+        ));
+
+        if (!isset($defaultAddress) || $defaultAddress == '') {
+          $defaultAddress = CRM_Core_OptionGroup::values('from_email_address', NULL, NULL, NULL, ' AND is_default = 1');
+
+          foreach ($defaultAddress as $id => $value) {
+            $sendTemplateParams['from'] = $value;
+          }
+        } else {
+          $sendTemplateParams['from'] = $defaultAddress;
         }
 
         $sendTemplateParams['toName'] = $displayName;
         $sendTemplateParams['toEmail'] = $email;
         $sendTemplateParams['autoSubmitted'] = TRUE;
-        $query = 'SELECT msg_subject subject, msg_text text, msg_html html, pdf_format_id format
-                      FROM civicrm_msg_template mt
-                      JOIN civicrm_option_value ov ON workflow_id = ov.id
-                      JOIN civicrm_option_group og ON ov.option_group_id = og.id
-                      WHERE og.name = %1 AND ov.name = %2 AND mt.is_default = 1';
-        $sqlParams = array(1 => array($sendTemplateParams['groupName'], 'String'), 2 => array($sendTemplateParams['valueName'], 'String'));
-        $dao = CRM_Core_DAO::executeQuery($query, $sqlParams);
-        $dao->fetch();
-        if ($dao->N) {
-          CRM_Core_BAO_MessageTemplate::sendTemplate($sendTemplateParams);
-        }
+        CRM_Core_BAO_MessageTemplate::sendTemplate($sendTemplateParams);
         if ($grantId && $status) {
-          self::createStatusChangeActivity($grantId, $grantStatus, $status, $contactID);
+          $activityStatus = CRM_Core_PseudoConstant::activityStatus('name');
+          $activityType = CRM_Core_PseudoConstant::activityType();
+          $session = CRM_Core_Session::singleton();
+          $params = array( 
+            'source_contact_id'=> $session->get('userID'),
+            'source_record_id' => $grantId,
+            'activity_type_id'=> array_search('Grant Status Change', $activityType),
+            'assignee_contact_id'=> array($contactID),
+            'subject'=> "Grant status changed from {$status} to {$grantStatus}",
+            'activity_date_time'=> date('Ymdhis'),
+            'status_id'=> array_search('Completed', $activityStatus),
+            'priority_id'=> 2,
+            'details'=> CRM_Core_Smarty::singleton()->get_template_vars('messageBody'),
+          );
+          CRM_Activity_BAO_Activity::create($params);
         }
       }
     }
@@ -421,26 +433,5 @@ WHERE civicrm_contact.id = $id ";
       }
     } 
     return $priority;
-  }
-
-  static function createStatusChangeActivity($grantId, $newStatus, $oldStatus, $contactID) {
-    if (($oldStatus == 'Draft' && $newStatus == 'Submitted') || $newStatus == $oldStatus || !$oldStatus) {
-      return;
-    }
-    $activityStatus = CRM_Core_PseudoConstant::activityStatus('name');
-    $activityType = CRM_Core_PseudoConstant::activityType();
-    $session = CRM_Core_Session::singleton();
-    $params = array( 
-      'source_contact_id'=> $session->get('userID'),
-      'source_record_id' => $grantId,
-      'activity_type_id'=> array_search('Grant Status Change', $activityType),
-      'assignee_contact_id'=> array($contactID),
-      'subject'=> "Grant status changed from {$oldStatus} to {$newStatus}",
-      'activity_date_time'=> date('Ymdhis'),
-      'status_id'=> array_search('Completed', $activityStatus),
-      'priority_id'=> 2,
-      'details'=> CRM_Core_Smarty::singleton()->get_template_vars('messageBody'),
-    );
-    CRM_Activity_BAO_Activity::create($params);
   }
 }
