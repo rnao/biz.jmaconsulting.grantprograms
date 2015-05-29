@@ -122,6 +122,7 @@ class CRM_Grant_BAO_Query {
       $query->_element['grant_type_id'] = 1;
       $query->_element['grant_status_id'] = 1;
       $query->_tables['civicrm_grant'] = 1;
+      $query->_tables['civicrm_payment'] = 1;
       $query->_whereTables['civicrm_grant'] = 1;
     }
   }
@@ -327,6 +328,14 @@ $side JOIN civicrm_payment ON (temp2.payment_id = civicrm_payment.id)";
 
       case 'grant_program':
         $from .= " $side JOIN civicrm_grant_program gp ON (civicrm_grant.grant_program_id = gp.id)";
+        break;
+
+      case 'civicrm_payment':
+        // Check if table hasn't already been joined
+        if (preg_match('/civicrm_payment/', $from) === 0) {
+          $from .= " $side JOIN civicrm_entity_payment ep ON (civicrm_grant.id = ep.entity_id AND ep.entity_table = 'civicrm_grant')" .
+            " $side JOIN civicrm_payment civicrm_payment ON (ep.payment_id = civicrm_payment.id)";
+        }
         break;
     }
     return $from;
