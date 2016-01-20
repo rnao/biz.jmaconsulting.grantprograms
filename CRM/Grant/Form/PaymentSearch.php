@@ -218,7 +218,7 @@ class CRM_Grant_Form_PaymentSearch extends CRM_Core_Form {
       //FIXME : incase of wp and joomla
       global $base_url;
       $config = CRM_Core_Config::singleton();
-      $directory = strstr($config->customFileUploadDir, 'sites');
+      $directory = strstr($config->uploadDir, 'sites');
       $config = CRM_Core_Config::singleton();
       $file_name = $base_url . '/' . $directory . $this->_download;
       $this->assign('download', $file_name); 
