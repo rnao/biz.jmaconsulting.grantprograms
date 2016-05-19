@@ -128,7 +128,7 @@ class CRM_Grant_Form_Search extends CRM_Core_Form {
    */
   protected $_prefix = "grant_";
 
-  protected $_defaults;
+  public $_defaults;
 
   /**
    * processing needed for buildForm and later

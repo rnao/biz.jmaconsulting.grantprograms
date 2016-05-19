@@ -688,7 +688,8 @@ function grantprograms_civicrm_pre($op, $objectName, $id, &$params) {
       $smarty->assign('previousGrant', $previousGrant);
     }
     $config = CRM_Core_Config::singleton();
-    $config->_params = $params;
+    $bag = Civi::settings();
+    $bag->set('grantParams', $params);
   }
 }
 
@@ -698,9 +699,9 @@ function grantprograms_civicrm_pre($op, $objectName, $id, &$params) {
  */
 function grantprograms_civicrm_post($op, $objectName, $objectId, &$objectRef) {
   //send mail after grant save
-  $config = CRM_Core_Config::singleton();
-  if ($objectName == 'Grant' && isset($config->_params) && !isset($config->_params['restrictEmail'])) {
-    $params = $config->_params;
+  $params = Civi::settings()->get('grantParams');
+
+  if ($objectName == 'Grant' && isset($params) && !isset($params['restrictEmail'])) {
     // added by JMA fixme in module
     $grantProgram  = new CRM_Grant_DAO_GrantProgram();
     $grantProgram->id = isset($params['grant_program_id']) ? $params['grant_program_id'] : NULL;
@@ -805,6 +806,9 @@ function grantprograms_civicrm_post($op, $objectName, $objectId, &$objectRef) {
         $result = CRM_Grant_BAO_Grant::create($params, $ids);
       }
     }
+
+    // Don't care for those anymore
+    Civi::settings()->set('grantParams', null);
   }
   //create financial account entry on grant create
   if ($objectName == 'Grant' && ($op == 'edit' || $op == 'create') && $objectRef->financial_type_id) {
