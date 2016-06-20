@@ -204,30 +204,30 @@ class CRM_Grant_DAO_Grant extends CRM_Core_DAO
    * class constructor
    *
    * @access public
-   * @return civicrm_grant
+   * @return CRM_Grant_DAO_Grant
    */
   function __construct()
   {
     $this->__table = 'civicrm_grant';
     parent::__construct();
   }
+
   /**
-   * return foreign links
+   * Returns foreign keys and entity references
    *
-   * @access public
    * @return array
+   *   [CRM_Core_Reference_Interface]
    */
-  function links()
+  static function getReferenceColumns()
   {
-    if (!(self::$_links)) {
-      self::$_links = array(
-        new CRM_Core_EntityReference(self::getTableName() , 'contact_id', 'civicrm_contact', 'id') ,
-        new CRM_Core_EntityReference(self::getTableName() , 'grant_program_id', 'civicrm_grant_program', 'id') ,
-        new CRM_Core_EntityReference(self::getTableName() , 'financial_type_id', 'civicrm_financial_type', 'id') ,
-      );
+    if (!self::$_links) {
+      self::$_links = static ::createReferenceColumns(__CLASS__);
+      self::$_links[] = new CRM_Core_Reference_Basic(self::getTableName() , 'contact_id', 'civicrm_contact', 'id');
+      self::$_links[] = new CRM_Core_Reference_Basic(self::getTableName() , 'financial_type_id', 'civicrm_financial_type', 'id');
     }
     return self::$_links;
   }
+
   /**
    * returns all the column names of this table
    *
