@@ -687,7 +687,8 @@ function grantprograms_civicrm_pre($op, $objectName, $id, &$params) {
       $smarty = CRM_Core_Smarty::singleton();
       $smarty->assign('previousGrant', $previousGrant);
     }
-    $config = CRM_Core_Config::singleton();
+    $grant = CRM_Grant_BAO_Grant::retrieve($grantParams);
+    $params['grant_type_id'] = $grant->grant_type_id;
     $bag = Civi::settings();
     $bag->set('grantParams', $params);
   }
