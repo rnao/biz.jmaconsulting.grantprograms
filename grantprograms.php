@@ -611,7 +611,8 @@ function grantprograms_civicrm_validate($formName, &$fields, &$files, &$form) {
 }
 
 function grantprograms_civicrm_pre($op, $objectName, $id, &$params) {
-  if ($objectName == 'Grant' && ($op == 'edit' || $op == 'create')) { 
+  if ($objectName == 'Grant' && ($op == 'edit' || $op == 'create')) {
+    $emptyArray = array();
     $grantStatus = CRM_Core_OptionGroup::values('grant_status');
     $assessmentAmount = 0;
     $calculateAssessment = FALSE;
@@ -666,7 +667,7 @@ function grantprograms_civicrm_pre($op, $objectName, $id, &$params) {
     if ($objectName == 'Grant' && $op == "edit") {
       if (!empty($previousGrant->amount_granted) && array_key_exists('amount_granted', $params) && CRM_Utils_Money::format($previousGrant->amount_granted) != CRM_Utils_Money::format($params['amount_granted']) && !CRM_Utils_Array::value('allocation', $params)) {
         $programParams = array('id' => $previousGrant->grant_program_id);
-        $grantProgram = CRM_Grant_BAO_GrantProgram::retrieve($programParams, CRM_Core_DAO::$_nullArray);
+        $grantProgram = CRM_Grant_BAO_GrantProgram::retrieve($programParams, $emptyArray);
         $remainderDifference = CRM_Utils_Rule::cleanMoney($params['amount_granted']) - $previousGrant->amount_granted;
         $grantProgramParams['remainder_amount'] = $grantProgram->remainder_amount - $remainderDifference;
         $grantProgramParams['id'] =  $grantProgram->id;
@@ -687,10 +688,13 @@ function grantprograms_civicrm_pre($op, $objectName, $id, &$params) {
       $smarty = CRM_Core_Smarty::singleton();
       $smarty->assign('previousGrant', $previousGrant);
     }
-    $grant = CRM_Grant_BAO_Grant::retrieve($grantParams);
-    $params['grant_type_id'] = $grant->grant_type_id;
-    $bag = Civi::settings();
-    $bag->set('grantParams', $params);
+
+    if (isset($grantParams) && is_array($grantParams)) {
+      $grant = CRM_Grant_BAO_Grant::retrieve($grantParams, $emptyArray);
+      $params['grant_type_id'] = $grant->grant_type_id;
+      $bag = Civi::settings();
+      $bag->set('grantParams', $params);
+    }
   }
 }
 
@@ -1099,7 +1103,9 @@ WHERE ccg.name LIKE 'NEI_%' ORDER BY ccg.id";
  *
  */
 function grantprograms_civicrm_alterMailParams(&$params) {
-  if (substr($params['valueName'], 0, 6) == 'grant_') {
+  if (isset($params['valueName']) && isset($params['html']) &&
+    substr($params['valueName'], 0, 6) == 'grant_')
+  {
     CRM_Core_Smarty::singleton()->assign('messageBody', $params['html']);
   }
 }
