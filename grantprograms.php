@@ -612,6 +612,11 @@ function grantprograms_civicrm_validate($formName, &$fields, &$files, &$form) {
 
 function grantprograms_civicrm_pre($op, $objectName, $id, &$params) {
   if ($objectName == 'Grant' && ($op == 'edit' || $op == 'create')) {
+    $session = CRM_Core_Session::singleton();
+    $session->createScope('civigrant');
+
+    $grantParams = $params; // save what we know so far; varies on whether edit or create
+
     $emptyArray = array();
     $grantStatus = CRM_Core_OptionGroup::values('grant_status');
     $assessmentAmount = 0;
@@ -689,12 +694,22 @@ function grantprograms_civicrm_pre($op, $objectName, $id, &$params) {
       $smarty->assign('previousGrant', $previousGrant);
     }
 
-    if (isset($grantParams) && is_array($grantParams)) {
+    if (isset($params['restrictEmail']) && $params['restrictEmail']) {
+      $session->set('restrictGrantEmail', true, 'civigrant');
+    }
+
+    if (!isset($grantParams['grant_type_id'])) {
       $grant = CRM_Grant_BAO_Grant::retrieve($grantParams, $emptyArray);
       $params['grant_type_id'] = $grant->grant_type_id;
-      $bag = Civi::settings();
-      $bag->set('grantParams', $params);
     }
+
+    // Do we need the grant ID in there really?
+    if ($op == 'create') {
+      $session->set("grant_new_params", $params, 'civigrant');
+    } else {
+      $session->set("grant_" . $id . "_params", $params, 'civigrant');
+    }
+
   }
 }
 
@@ -703,119 +718,133 @@ function grantprograms_civicrm_pre($op, $objectName, $id, &$params) {
  *
  */
 function grantprograms_civicrm_post($op, $objectName, $objectId, &$objectRef) {
-  //send mail after grant save
-  $params = Civi::settings()->get('grantParams');
 
-  if ($objectName == 'Grant' && isset($params) && !isset($params['restrictEmail'])) {
-    // added by JMA fixme in module
-    $grantProgram  = new CRM_Grant_DAO_GrantProgram();
-    $grantProgram->id = isset($params['grant_program_id']) ? $params['grant_program_id'] : NULL;
-    $page = new CRM_Core_Page();
-    if ($grantProgram->find(TRUE)) {
-      $params['is_auto_email'] = $grantProgram->is_auto_email;
-    }
-     
-    if ($params['is_auto_email'] == 1) {
-      // FIXME: for grant profiles
-      $customData = array();
-      if (!CRM_Utils_Array::value('custom', $params)) {
-        $params['custom'] = array();
-        $entityValues = CRM_Core_BAO_CustomValueTable::getEntityValues($objectId, 'Grant');
-        getCustomFields(array_filter($entityValues), $customData);
+  // Send email after grant save
+  if ($objectName == 'Grant') {
+    $session = CRM_Core_Session::singleton();
+    $restrictEmail = $session->get('restrictGrantEmail', 'civigrant');
+
+    // Manual override?
+    if ($restrictEmail === null) {
+      if ($op == 'create') {
+        $params = $session->get('grant_new_params', 'civigrant');
+      } else {
+        $params = $session->get('grant_' . $objectId . '_params', 'civigrant');
       }
-      foreach ($params['custom'] as $key => $value) {
-        foreach ($value as $index => $field) {
-          if (!empty($field['value'])) {
-            $customData[$field['custom_group_id']][$field['custom_field_id']] = $field['value'];
-            if (strstr($field['column_name'], 'start_date')) {
-              $startDate = $field['value'];
-            }
-            if (strstr($field['column_name'], 'end_date')) {
-              $endDate = $field['value'];
+
+      // Email
+      $grantProgram  = new CRM_Grant_DAO_GrantProgram();
+      $grantProgram->id = isset($params['grant_program_id']) ? $params['grant_program_id'] : NULL;
+      $page = new CRM_Core_Page();
+      if ($grantProgram->find(TRUE)) {
+        $params['is_auto_email'] = $grantProgram->is_auto_email;
+      }
+
+      if ($params['is_auto_email'] == 1) {
+        // FIXME: for grant profiles
+        $customData = array();
+        if (!CRM_Utils_Array::value('custom', $params)) {
+          $params['custom'] = array();
+          $entityValues = CRM_Core_BAO_CustomValueTable::getEntityValues($objectId, 'Grant');
+          getCustomFields(array_filter($entityValues), $customData);
+        }
+        foreach ($params['custom'] as $key => $value) {
+          foreach ($value as $index => $field) {
+            if (!empty($field['value'])) {
+              $customData[$field['custom_group_id']][$field['custom_field_id']] = $field['value'];
+              if (strstr($field['column_name'], 'start_date')) {
+                $startDate = $field['value'];
+              }
+              if (strstr($field['column_name'], 'end_date')) {
+                $endDate = $field['value'];
+              }
             }
           }
         }
-      }
-      $customGroup = $customField = array();
-      if (!empty( $customData)) {
-        foreach ($customData as $dataKey => $dataValue) {
-          $customGroupName = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_CustomGroup',$dataKey,'title');
-          $customGroup[$customGroupName] = $customGroupName;
-          $count = 0;
-          foreach ($dataValue  as $dataValueKey => $dataValueValue) {
-            $customField[$customGroupName]['custom_'.$dataValueKey]['label'] = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_CustomField', $dataValueKey, 'label');
-            $customFieldData = grantprograms_getCustomFieldData($dataValueKey);
-            if (CRM_Utils_Array::value('html_type', $customFieldData) == 'Select') {
-              $customField[$customGroupName]['custom_'.$dataValueKey]['value'] = grantprograms_getOptionValueLabel($customFieldData['option_group_id'],$dataValueValue);
-            } 
-            elseif (CRM_Utils_Array::value('html_type', $customFieldData) == 'Select Date') {
-              $customField[$customGroupName]['custom_'.$dataValueKey]['value'] = date('Y-m-d', strtotime($dataValueValue));
-            } 
-            else {
-              $customField[$customGroupName]['custom_'.$dataValueKey]['value'] = $dataValueValue;
+        $customGroup = $customField = array();
+        if (!empty( $customData)) {
+          foreach ($customData as $dataKey => $dataValue) {
+            $customGroupName = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_CustomGroup',$dataKey,'title');
+            $customGroup[$customGroupName] = $customGroupName;
+            $count = 0;
+            foreach ($dataValue  as $dataValueKey => $dataValueValue) {
+              $customField[$customGroupName]['custom_'.$dataValueKey]['label'] = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_CustomField', $dataValueKey, 'label');
+              $customFieldData = grantprograms_getCustomFieldData($dataValueKey);
+              if (CRM_Utils_Array::value('html_type', $customFieldData) == 'Select') {
+                $customField[$customGroupName]['custom_'.$dataValueKey]['value'] = grantprograms_getOptionValueLabel($customFieldData['option_group_id'],$dataValueValue);
+              }
+              elseif (CRM_Utils_Array::value('html_type', $customFieldData) == 'Select Date') {
+                $customField[$customGroupName]['custom_'.$dataValueKey]['value'] = date('Y-m-d', strtotime($dataValueValue));
+              }
+              else {
+                $customField[$customGroupName]['custom_'.$dataValueKey]['value'] = $dataValueValue;
+              }
+              $count++;
             }
-            $count++;
           }
         }
-      }
-      $page->assign('customGroup', $customGroup);
-      $page->assign('customField', $customField);
-      
-      $grantStatuses = $grantStatus = CRM_Core_OptionGroup::values('grant_status');
-      $grantPrograms = CRM_Grant_BAO_GrantProgram::getGrantPrograms();
-      $grantTypes = CRM_Core_OptionGroup::values('grant_type');
-      if (CRM_Utils_Array::value('grant_program_id', $params)) {
-        $grantProgram = $grantPrograms[$params['grant_program_id']];
-      }
-      else {
-        $grantProgram = '';
-      }
-      $grantType = $grantTypes[$params['grant_type_id']];
-      $grantStatus = $grantStatus[$params['status_id']];
-      $grantIneligibleReasons = CRM_Core_OptionGroup::values('reason_grant_ineligible');
-      $grantIncompleteReasons = CRM_Core_OptionGroup::values('reason_grant_incomplete');
-      
-      $page->assign('grant_type', $grantType);
-      $page->assign('grant_programs', $grantProgram);
-      $page->assign('grant_status', $grantStatus);
-      if (CRM_Utils_Array::value('grant_rejected_reason_id', $params)) {
-        $params['grant_rejected_reason'] = $grantIneligibleReasons[$params['grant_rejected_reason_id']];
-      }
-      if (CRM_Utils_Array::value('grant_incomplete_reason_id', $params)) {
-        $params['grant_incomplete_reason'] = $grantIncompleteReasons[$params['grant_incomplete_reason_id']];
-      }
-      $page->assign('grant', $params);
-      $smarty = CRM_Core_Smarty::singleton();
-      $sendMail = $smarty->get_template_vars('sendMail');
-      if ($sendMail) {
-        $previousGrant = $smarty->get_template_vars('previousGrant');
-        $previousStatus = '';
-        if ($previousGrant && property_exists($previousGrant, 'status_id')) {
-          $previousStatus = $grantStatuses[$previousGrant->status_id];
-        }
-        CRM_Grant_BAO_GrantProgram::sendMail($params['contact_id'], $params, $grantStatus, $objectId, $previousStatus);
-      }
-    }
-    
-    $grantStatus = CRM_Core_OptionGroup::values('grant_status', TRUE);
-    if (isset($endDate)) {
-      $infoTooLate = key(CRM_Core_PseudoConstant::accountOptionValues('grant_info_too_late'));
-      $days = ' +' . $infoTooLate . ' days';
-      $newDate = date('Y-m-d', strtotime($endDate . $days));
-      if (($newDate <= date('Y-m-d') || date('Y') < date('Y',strtotime($endDate))) && $params['status_id'] == $grantStatus['Submitted']) {
-        $reasonGranItneligible = CRM_Core_OptionGroup::values('reason_grant_ineligible');
-        $reasonGranItneligible = array_flip($reasonGranItneligible);
-        $params['status_id'] = $grantStatus['Ineligible'];
-        $params['grant_rejected_reason_id'] = $reasonGranItneligible['Outside dates'];
-        $ids['grant_id'] = $objectId;
-        $result = CRM_Grant_BAO_Grant::create($params, $ids);
-      }
-    }
+        $page->assign('customGroup', $customGroup);
+        $page->assign('customField', $customField);
 
-    // Don't care for those anymore
-    Civi::settings()->set('grantParams', null);
+        $grantStatuses = $grantStatus = CRM_Core_OptionGroup::values('grant_status');
+        $grantPrograms = CRM_Grant_BAO_GrantProgram::getGrantPrograms();
+        $grantTypes = CRM_Core_OptionGroup::values('grant_type');
+        if (CRM_Utils_Array::value('grant_program_id', $params)) {
+          $grantProgram = $grantPrograms[$params['grant_program_id']];
+        }
+        else {
+          $grantProgram = '';
+        }
+        $grantType = $grantTypes[$params['grant_type_id']];
+        $grantStatus = $grantStatus[$params['status_id']];
+        $grantIneligibleReasons = CRM_Core_OptionGroup::values('reason_grant_ineligible');
+        $grantIncompleteReasons = CRM_Core_OptionGroup::values('reason_grant_incomplete');
+
+        $page->assign('grant_type', $grantType);
+        $page->assign('grant_programs', $grantProgram);
+        $page->assign('grant_status', $grantStatus);
+        if (CRM_Utils_Array::value('grant_rejected_reason_id', $params)) {
+          $params['grant_rejected_reason'] = $grantIneligibleReasons[$params['grant_rejected_reason_id']];
+        }
+        if (CRM_Utils_Array::value('grant_incomplete_reason_id', $params)) {
+          $params['grant_incomplete_reason'] = $grantIncompleteReasons[$params['grant_incomplete_reason_id']];
+        }
+        $page->assign('grant', $params);
+        $smarty = CRM_Core_Smarty::singleton();
+        $sendMail = $smarty->get_template_vars('sendMail');
+        if ($sendMail) {
+          $previousGrant = $smarty->get_template_vars('previousGrant');
+          $previousStatus = '';
+          if ($previousGrant && property_exists($previousGrant, 'status_id')) {
+            $previousStatus = $grantStatuses[$previousGrant->status_id];
+          }
+          CRM_Grant_BAO_GrantProgram::sendMail($params['contact_id'], $params, $grantStatus, $objectId, $previousStatus);
+        }
+      }
+
+      $grantStatus = CRM_Core_OptionGroup::values('grant_status', TRUE);
+      if (isset($endDate)) {
+        $infoTooLate = key(CRM_Core_PseudoConstant::accountOptionValues('grant_info_too_late'));
+        $days = ' +' . $infoTooLate . ' days';
+        $newDate = date('Y-m-d', strtotime($endDate . $days));
+        if (($newDate <= date('Y-m-d') || date('Y') < date('Y',strtotime($endDate))) &&
+          $params['status_id'] == $grantStatus['Submitted'])
+        {
+          $reasonGranItneligible = CRM_Core_OptionGroup::values('reason_grant_ineligible');
+          $reasonGranItneligible = array_flip($reasonGranItneligible);
+          $params['status_id'] = $grantStatus['Ineligible'];
+          $params['grant_rejected_reason_id'] = $reasonGranItneligible['Outside dates'];
+          $ids['grant_id'] = $objectId;
+          $result = CRM_Grant_BAO_Grant::create($params, $ids);
+        }
+      }
+
+      // Remove session var
+      $session->resetScope('civigrant');
+    }
   }
-  //create financial account entry on grant create
+
+  // Create financial account entry on grant create
   if ($objectName == 'Grant' && ($op == 'edit' || $op == 'create') && $objectRef->financial_type_id) {
     $smarty = CRM_Core_Smarty::singleton();
     $createItem = TRUE;
